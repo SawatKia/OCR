@@ -9,13 +9,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 const { createWorker, createScheduler } = Tesseract;
 
-// var scheduler = await createScheduler();
-// const workerGen = async () => {
-//     const worker = await Tesseract.createWorker("eng", 1, {
-//       logger: function(m){console.log(m);}
-//     });
-//     scheduler.addWorker(worker);
-//   };
+
 
 app.use(express.json());
 
