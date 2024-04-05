@@ -19,21 +19,23 @@ app.use(express.json());
 
 app.post("/upload", upload.single("fileupload"), async (req, res) => {
   try {
+    // Check if file is uploaded
     if (!req.file) {
       return res.status(400).send({ message: "Please upload a file" });
     }
 
+    // Check if file is a valid image
     if (!imageMimeTypes.includes(req.file.mimetype)) {
       return res.status(400).send({ message: "Please upload a valid image file" });
     }
+
     const rectangles = req.body.rectangles ? JSON.parse(req.body.rectangles) : [
       { left: 0, top: 268, width: 170, height: 970 },
-      { left: 0, top: 268, width: 170, height: 970 },
-      { left: 0, top: 268, width: 113, height: 970 }
+      { left: 170, top: 268, width: 170, height: 970 },
+      { left: 340, top: 268, width: 113, height: 970 }
     ];
     const imageBuffer = req.file.buffer; // Get image buffer from req.file
 
-    //const imageBuffer = await resizeImage(req.file.buffer, 1080, 2400);
     worker = await createWorker("eng", 1, {
       logger: (m) => {
         if (m.status === "recognizing text") {
@@ -49,8 +51,12 @@ app.post("/upload", upload.single("fileupload"), async (req, res) => {
       errorHandler: (err) => console.error(err),
     });
 
-    const stocksData = await extractStocksFromImage(imageBuffer, rectangles);
+    // Extract text from image
+    const extractedText = await extractTextFromImage(imageBuffer, rectangles, worker);
     await worker.terminate();
+
+    // Store extracted text in stocks data format
+    const stocksData = storeStocksData(extractedText);
 
     res.status(200).send({ status: "Upload success", data: stocksData });
   } catch (error) {
@@ -68,7 +74,22 @@ app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
       if(!imageMimeTypes.includes(req.files[i].mimetype)) {
         return res.status(400).send({ message: "Please upload a valid image file" });
       }
+      worker = await createWorker("eng", 1, {
+        logger: (m) => {
+          if (m.status === "recognizing text") {
+            const progress = Math.round(m.progress * 100);
+            process.stdout.clearLine();
+            process.stdout.cursorTo(0);
+            const dots = ".".repeat(Math.floor(progress / 5)).padEnd(20, " ");
+            process.stdout.write(`[${dots}] ${progress}%`);
+          } else {
+            console.log(m.status);
+          }
+        },
+        errorHandler: (err) => console.error(err),
+      });
     }
+
   } catch (error) {
     
   }
@@ -77,30 +98,35 @@ app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 //SECTION -  Utility functions
-async function extractStocksFromImage(image, rectangles) {
-  const finding = ["Symbol", "volume", "average_price"];
-  let stocks = [];
-  // recognize the image throughout the rectangles
+// Extract text from an image using Tesseract
+async function extractTextFromImage(image, rectangles, worker) {
+  const extractedText = [];
+
   for (let i = 0; i < rectangles.length; i++) {
     const { data: { text } } = await worker.recognize(image, { rectangle: rectangles[i] });
-    //FIXME - delete the console.log before Production
-    console.log(` : The text in rectangle ${i + 1}) ${finding[i]} is: \n${text}`);
-    const result = postprocessing(text, finding[i]);
-
-    if (i === 0) var symbols = result;
-    else if (i === 1) var volumes = result;
-    else var averagePrices = result;
+    console.log(` : The text in rectangle ${i + 1} is: \n${text}`);
+    extractedText.push(text);
   }
 
-  // Push each stock to the stocks array
-  for (let i = 0; i < symbols.length; i++) {
-    stocks.push({
-        symbol: symbols[i],
-        volume: volumes[i],
-        average_price: averagePrices[i],
-    });
+  return extractedText;
+}
+
+// Store extracted text in stocks data format
+function storeStocksData(extractedText) {
+  const finding = ["Symbol", "volume", "average_price"];
+  const stocks = [];
+
+  for (let i = 0; i < extractedText.length; i++) {
+    const result = postprocessing(extractedText[i], finding[i]);
+    const stockData = {};
+
+    stockData.symbol = result[0] || null;
+    stockData.volume = result[1] || null;
+    stockData.average_price = result[2] || null;
+
+    stocks.push(stockData);
   }
-  console.log("stocks:\n" + JSON.stringify(stocks));
+
   return stocks;
 }
 
