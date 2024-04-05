@@ -57,11 +57,19 @@ app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
 // Utility functions
 
-function resizeImage(imageBuffer, width, height) {
-  return sharp(imageBuffer).resize(width, height).toBuffer();
+async function resizeImage(imageBuffer, width, height) {
+  const resizedImg = await sharp(imageBuffer).resize({
+    width: width,
+    height: height,
+    fit: 'inside' // This option ensures that the entire image fits within the specified dimensions without cropping or zooming
+  });
+  resizedImg.toFile("./imageResized.jpg");
+  return resizedImg.toBuffer();
 }
 
+
 async function extractStocksFromImage(image) {
+  //TODO - back to calculate the rectangles with the width and height of image
   const rectangles = [
     { left: 0, top: 400, width: 200, height: 1500 },
     { left: 300, top: 400, width: 200, height: 1500 },
@@ -100,6 +108,6 @@ function postprocessing(text, find) {
     volume: /\d*\,?\d+/g,
     'average price': /\d+\.\d+/g
   };
-
+  console.log(`${find}: ${text.match(regex[find])}` );
   return text.match(regex[find]);
 }
