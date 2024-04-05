@@ -1,7 +1,6 @@
 const express = require("express");
 const multer = require("multer");
 const Tesseract = require("tesseract.js");
-const sharp = require("sharp");
 
 const PORT = 5000;
 const app = express();
@@ -9,13 +8,14 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 const { createWorker } = Tesseract;
 const imageMimeTypes = ["image/jpeg", "image/png", "image/gif", "image/bmp"];
+const imagesfield = [
+  {name: 'Symbol', maxCount: 1},
+  {name: 'volume', maxCount: 1},
+  {name: 'average_price', maxCount: 1}
+];
 let worker;
 
 app.use(express.json());
-
-app.get("/", (req, res) => {
-  res.send("Hello, world!!");
-});
 
 app.post("/upload", upload.single("fileupload"), async (req, res) => {
   try {
@@ -26,8 +26,14 @@ app.post("/upload", upload.single("fileupload"), async (req, res) => {
     if (!imageMimeTypes.includes(req.file.mimetype)) {
       return res.status(400).send({ message: "Please upload a valid image file" });
     }
+    const rectangles = req.body.rectangles ? JSON.parse(req.body.rectangles) : [
+      { left: 0, top: 268, width: 170, height: 970 },
+      { left: 0, top: 268, width: 170, height: 970 },
+      { left: 0, top: 268, width: 113, height: 970 }
+    ];
+    const imageBuffer = req.file.buffer; // Get image buffer from req.file
 
-    const imageBuffer = await resizeImage(req.file.buffer, 1080, 2400);
+    //const imageBuffer = await resizeImage(req.file.buffer, 1080, 2400);
     worker = await createWorker("eng", 1, {
       logger: (m) => {
         if (m.status === "recognizing text") {
@@ -43,7 +49,7 @@ app.post("/upload", upload.single("fileupload"), async (req, res) => {
       errorHandler: (err) => console.error(err),
     });
 
-    const stocksData = await extractStocksFromImage(imageBuffer);
+    const stocksData = await extractStocksFromImage(imageBuffer, rectangles);
     await worker.terminate();
 
     res.status(200).send({ status: "Upload success", data: stocksData });
@@ -53,31 +59,27 @@ app.post("/upload", upload.single("fileupload"), async (req, res) => {
   }
 });
 
+app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
+  try {
+    if(!req.files) {
+      return res.status(400).send({ message: "Please upload images" });
+    }
+    for(let i = 0;i<req.files.length;i++) {
+      if(!imageMimeTypes.includes(req.files[i].mimetype)) {
+        return res.status(400).send({ message: "Please upload a valid image file" });
+      }
+    }
+  } catch (error) {
+    
+  }
+});
+
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 
-// Utility functions
-
-async function resizeImage(imageBuffer, width, height) {
-  const resizedImg = await sharp(imageBuffer).resize({
-    width: width,
-    height: height,
-    fit: 'inside' // This option ensures that the entire image fits within the specified dimensions without cropping or zooming
-  });
-  resizedImg.toFile("./imageResized.jpg");
-  return resizedImg.toBuffer();
-}
-
-
-async function extractStocksFromImage(image) {
-  //TODO - back to calculate the rectangles with the width and height of image
-  const rectangles = [
-    { left: 0, top: 400, width: 200, height: 1500 },
-    { left: 300, top: 400, width: 200, height: 1500 },
-    { left: 500, top: 400, width: 200, height: 1500 },
-  ];
-  const finding = ["Symbol", "volume", "average price"];
+//SECTION -  Utility functions
+async function extractStocksFromImage(image, rectangles) {
+  const finding = ["Symbol", "volume", "average_price"];
   let stocks = [];
-  
   // recognize the image throughout the rectangles
   for (let i = 0; i < rectangles.length; i++) {
     const { data: { text } } = await worker.recognize(image, { rectangle: rectangles[i] });
@@ -106,7 +108,7 @@ function postprocessing(text, find) {
   const regex = {
     Symbol: /([A-Z]{2,5}\w?)\b/g,
     volume: /\d*\,?\d+/g,
-    'average price': /\d+\.\d+/g
+    'average_price': /\d+\.\d+/g
   };
   console.log(`${find}: ${text.match(regex[find])}` );
   return text.match(regex[find]);
