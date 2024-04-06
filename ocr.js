@@ -100,7 +100,7 @@ app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
 
     await worker.terminate();
 
-    console.log(`extractedText of all images to postprocessing:\n\ttype: ${typeof extractedTexts}\n\ttext: ${extractedTexts}`);
+    console.log(` extractedText of all images to postprocessing:\n\ttype: ${typeof extractedTexts}\n\ttext: ${extractedTexts}`);
     // Store extracted text in stocks data format
     const stocksData = getStocksData(extractedTexts);
     console.log("stocksData in Endpoint[/uploads]: ", stocksData);
@@ -122,7 +122,8 @@ async function extractTextFromImage(image, rectangles = []) {
   const extractedText = [];
   if (rectangles.length === 0) {
     const { data: { text } } = await worker.recognize(image);
-    extractedText.push(text);
+    //extractedText.push(text);
+    return text
   } else {
     for (let i = 0; i < rectangles.length; i++) {
       const { data: { text } } = await worker.recognize(image, { rectangle: rectangles[i] });
