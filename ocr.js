@@ -86,7 +86,7 @@ app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
       errorHandler: (err) => console.error(err),
     });
 
-    const extractedTexts = [];
+    let extractedTexts = [];
     const files = Object.values(req.files);
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -94,15 +94,15 @@ app.post("/uploads", upload.fields(imagesfield), async (req, res) => {
       if (!imageMimeTypes.includes(mimetype)) {
         return res.status(400).send({ message: "Please upload a valid image file" });
       }
-      const extractedText = await extractTextFromImage(file[0].buffer);
-      extractedTexts.push(extractedText);
+      extractedText = await extractTextFromImage(file[0].buffer);
+      extractedTexts.push(extractedText[0]);
     }
 
     await worker.terminate();
 
     console.log(` extractedText of all images to postprocessing:\n\ttype: ${typeof extractedTexts}\n\ttext: ${extractedTexts}`);
     // Store extracted text in stocks data format
-    const stocksData = getStocksData(extractedTexts);
+    const stocksData = storeStocksData(extractedTexts);
     console.log("stocksData in Endpoint[/uploads]: ", stocksData);
 
 
@@ -120,10 +120,10 @@ app.listen(PORT, () => console.log(`Listening on port ${PORT}`));
 // Extract text from an image using Tesseract
 async function extractTextFromImage(image, rectangles = []) {
   const extractedText = [];
-  if (rectangles.length === 0) {
+  if (rectangles.length === 0) {// for upload 3 images
     const { data: { text } } = await worker.recognize(image);
-    //extractedText.push(text);
-    return text
+    extractedText.push(text);
+    //return text
   } else {
     for (let i = 0; i < rectangles.length; i++) {
       const { data: { text } } = await worker.recognize(image, { rectangle: rectangles[i] });
